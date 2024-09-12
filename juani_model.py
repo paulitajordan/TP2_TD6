@@ -9,7 +9,7 @@ from sklearn.metrics import roc_auc_score
 
 
 # Proportion of the data to use for training
-PROPORTION = 1/5
+PROPORTION = 1/10
 
 # Print all columns and rows
 pd.set_option('display.max_columns', None)
@@ -36,12 +36,12 @@ ctr_21["Dia"] = 7
 ctr_test["Dia"] = 8 # para optimizar
 
 # Load the train data
-train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21])
+train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20])
 
 # Split the train data into train and test
-#test_data = ctr_21
-#y_test = ctr_21["Label"]
-#X_test = ctr_21.drop(columns=["Label"])
+test_data = ctr_21
+y_test = ctr_21["Label"]
+X_test = ctr_21.drop(columns=["Label"])
 
 # Load the test data
 eval_data = ctr_test
@@ -64,10 +64,24 @@ preprocessor = ColumnTransformer(
 del train_data
 gc.collect()
 
-#cls = make_pipeline(preprocessor, DecisionTreeClassifier(max_depth=20, min_samples_split= 100, random_state=2345)) # sacamos el min_impurity_decrease=0.0001
+
 print("Training the model...")
 X_train_transformed = preprocessor.fit_transform(X_train)
-#x_test_transformed = preprocessor.transform(X_test)
+x_test_transformed = preprocessor.transform(X_test)
+
+# grid search
+depths = [10, 20, 30, 40, 50]
+min_samples = [100, 200, 300, 400, 500]
+for i in depths:
+    for j in min_samples:
+        cls = DecisionTreeClassifier(max_depth=i, min_samples_split= j, random_state=2345)
+        cls.fit(X_train_transformed, y_train)
+        y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
+        auc = roc_auc_score(y_test, y_preds_test)
+        print("AUC: ", auc, " depth: ", i, " min_samples: ", j)
+    
+
+
 
 cls = DecisionTreeClassifier(max_depth=20, min_samples_split= 100, random_state=2345)
 cls.fit(X_train_transformed, y_train)
