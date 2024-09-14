@@ -6,7 +6,8 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import roc_auc_score
-
+from scipy import sparse
+import numpy as np
 
 # Proportion of the data to use for training
 PROPORTION = 1/10
@@ -32,7 +33,7 @@ ctr_17["Dia"] = 3
 ctr_18["Dia"] = 4
 ctr_19["Dia"] = 5
 ctr_20["Dia"] = 6
-ctr_21["Dia"] = 7
+ctr_21["Dia"] = 7 # de validación
 ctr_test["Dia"] = 8 # para optimizar
 
 # Load the train data
@@ -69,23 +70,29 @@ print("Training the model...")
 X_train_transformed = preprocessor.fit_transform(X_train)
 x_test_transformed = preprocessor.transform(X_test)
 
+sparse.save_npz('X_train_transformed.npz', X_train_transformed)
+sparse.save_npz('x_test_transformed.npz', x_test_transformed)
+
+exit()
+
 # grid search
-depths = [10, 20, 30, 40, 50]
-min_samples = [100, 200, 300, 400, 500]
-for i in depths:
-    for j in min_samples:
-        cls = DecisionTreeClassifier(max_depth=i, min_samples_split= j, random_state=2345)
-        cls.fit(X_train_transformed, y_train)
-        y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
-        auc = roc_auc_score(y_test, y_preds_test)
-        print("AUC: ", auc, " depth: ", i, " min_samples: ", j)
+#depths = [30]
+#min_samples = [100]
+#for i in depths:
+#    for j in min_samples:
+#        cls = DecisionTreeClassifier(max_depth=i, min_samples_split= j, random_state=2345)
+#        cls.fit(X_train_transformed, y_train)
+#        y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
+#        auc = roc_auc_score(y_test, y_preds_test)
+#        print("AUC: ", auc, " depth: ", i, " min_samples: ", j)
     
 
 
 
-cls = DecisionTreeClassifier(max_depth=20, min_samples_split= 100, random_state=2345)
+cls = DecisionTreeClassifier(max_depth=30, min_samples_split= 100, random_state=2345)
 cls.fit(X_train_transformed, y_train)
 print("Model trained!")
+
 
 # Predict on the evaluation set
 
@@ -94,7 +101,7 @@ X_eval_transformed = preprocessor.transform(X_eval) ## aca transforma las variab
 
 
 y_preds = cls.predict_proba(X_eval_transformed)[:, cls.classes_ == 1].squeeze()
-#y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
+
 
 
 # Make the submission file
@@ -104,8 +111,11 @@ submission_df.to_csv("basic_model.csv", sep=",", index=False)
 
 print("Done!, using: " + str(PROPORTION) + " proportion of the data")
 
-#auc = roc_auc_score(y_test, y_preds_test)
-#print("AUC: ", auc, " day 21")
+##VALIDACOIÓN
+y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
+auc = roc_auc_score(y_test, y_preds_test)
+print("AUC: ", auc, " day 21")
+print("categorical data")
 
 
 
