@@ -70,11 +70,6 @@ print("Training the model...")
 X_train_transformed = preprocessor.fit_transform(X_train)
 x_test_transformed = preprocessor.transform(X_test)
 
-sparse.save_npz('X_train_transformed.npz', X_train_transformed)
-sparse.save_npz('x_test_transformed.npz', x_test_transformed)
-
-exit()
-
 # grid search
 #depths = [30]
 #min_samples = [100]
