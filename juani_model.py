@@ -51,13 +51,13 @@ eval_data = ctr_test
 train_data = train_data.sample(frac=PROPORTION)  # Use only 1/n of the data for training
 y_train = train_data["Label"]
 X_train = train_data.drop(columns=["Label"])
-numeric_cols = X_train.select_dtypes(include='number').columns
+#numeric_cols = X_train.select_dtypes(include='number').columns
 categoric_cols = X_train.select_dtypes(exclude='number').columns
 
 # Crea el transformador para manejar variables numéricas y categóricas
 preprocessor = ColumnTransformer(
     transformers=[
-        ('num', SimpleImputer(), numeric_cols),
+        #('num', SimpleImputer(), numeric_cols),
         ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=True), categoric_cols)
         # los 2 param. de OneHotEncoder son para que no falle si hay valores desconocidos y para que use matrices ralas
     ])
