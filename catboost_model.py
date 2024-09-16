@@ -9,8 +9,8 @@ import ast
 
 
 MODEL_NAME = "catboost_model"
-PROPORTION = 1/100 # Cant datos
-TEST = True
+PROPORTION = 1/10 # Cant datos
+TEST = False
 
 # Print all columns and rows
 pd.set_option('display.max_columns', None)
@@ -29,7 +29,7 @@ ctr_21 = pd.read_csv ("./datos/ctr_21.csv")
 ctr_test = pd.read_csv ("./datos/ctr_test.csv")
 eval_data = ctr_test
 
-## aca separamos la fecha en columnas
+# convertimos auction_time a datetime y despues lo separo en columnas (año,mess,dia,hora,minuto)
 for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
     df["auction_time"] = pd.to_datetime(df["auction_time"])
     df["year"] = df["auction_time"].dt.year
@@ -46,12 +46,6 @@ if not TEST:
     train_data = pd.concat([train_data,ctr_21])
 
 train_data = train_data.sample(frac=PROPORTION, random_state=1234)
-
-# convertimos auction_time a datetime y despues lo separo en columnas (año,mess,dia,hora,minuto)
-
-
-if TEST:
-    ctr_21["auction_time"] = pd.to_datetime(ctr_21["auction_time"])
 
 y_train = train_data["Label"]
 X_train = train_data.drop(columns=["Label"])
@@ -90,6 +84,7 @@ list_columns = ['action_list_1', 'action_list_2']
 X_train, mlb_dict = one_hot_encode_lists(X_train, list_columns)
 if not TEST:
     eval_data,_ = one_hot_encode_lists(eval_data, list_columns, mlb_dict)
+    X_train, eval_data = X_train.align(eval_data, join='outer', axis=1, fill_value=0)
 
 
 # consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
@@ -122,7 +117,7 @@ catboost_model.fit(X_train, y_train, cat_features=catgorical_indices)
 if not TEST:
     # nos creamos el archivo de submission
     assert X_train.columns.equals(eval_data.columns)
-    #y_preds = catboost_model.predict_proba(eval_data)[:, catboost_model.classes_ == 1].squeeze()
+    y_preds = catboost_model.predict_proba(eval_data)[:, catboost_model.classes_ == 1].squeeze()
 
     submission_df = pd.DataFrame({"id": eval_data["id"], "Label": y_preds})
     submission_df["id"] = submission_df["id"].astype(int)
@@ -132,7 +127,7 @@ print("Se entreno el " + MODEL_NAME + " con un: " + str(PROPORTION) + " de los d
 
 
 # me mate la ram
-del X_train
+#del X_train
 del y_train
 del eval_data
 gc.collect()
@@ -142,8 +137,8 @@ gc.collect()
 y_test = ctr_21["Label"]
 X_test = ctr_21.drop(columns=["Label"])
 X_test,_ = one_hot_encode_lists(X_test, list_columns, mlb_dict)
+X_test, _ = X_test.align(X_train, join='outer', axis=1, fill_value=0)
 categorical_cols_test = X_test.select_dtypes(exclude='number').columns
-catgorical_indices_test = [X_test.columns.get_loc(col) for col in categorical_cols_test]
 X_test[categorical_cols_test] = X_test[categorical_cols_test].astype(str)
 y_preds_test = catboost_model.predict_proba(X_test)[:, catboost_model.classes_ == 1].squeeze()
 roc_auc = roc_auc_score(y_test, y_preds_test)
