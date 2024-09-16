@@ -9,7 +9,7 @@ import ast
 
 
 MODEL_NAME = "catboost_model"
-PROPORTION = 1/10 # Cant datos
+PROPORTION = 1 # Cant datos
 TEST = False
 
 # Print all columns and rows
@@ -31,13 +31,14 @@ eval_data = ctr_test
 
 # convertimos auction_time a datetime y despues lo separo en columnas (año,mess,dia,hora,minuto)
 for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
-    df["auction_time"] = pd.to_datetime(df["auction_time"])
-    df["year"] = df["auction_time"].dt.year
-    df["month"] = df["auction_time"].dt.month
+    df["auction_time"] = pd.to_datetime(df["auction_time"], unit='s')
+    #df["year"] = df["auction_time"].dt.year
+    #df["month"] = df["auction_time"].dt.month
+    # no tenian sentido estas columnas
     df["day"] = df["auction_time"].dt.day
     df["hour"] = df["auction_time"].dt.hour
     df["minute"] = df["auction_time"].dt.minute
-    df["second"] = df["auction_time"].dt.second
+    #df["second"] = df["auction_time"].dt.second
     df["weekday"] = df["auction_time"].dt.weekday
 
 # datos de etnrenamiento (agregar el 21)
@@ -46,6 +47,11 @@ if not TEST:
     train_data = pd.concat([train_data,ctr_21])
 
 train_data = train_data.sample(frac=PROPORTION, random_state=1234)
+
+## nos quedamos cortos de ram
+del ctr_15, ctr_16, ctr_17, ctr_18, ctr_19, ctr_20, ctr_21
+gc.collect()
+
 
 y_train = train_data["Label"]
 X_train = train_data.drop(columns=["Label"])
@@ -80,11 +86,11 @@ def one_hot_encode_lists(df, list_columns, mlb_dict=None):
     return df, mlb_dict
 
 # expandir las columnas que contienen listas
-list_columns = ['action_list_1', 'action_list_2']
-X_train, mlb_dict = one_hot_encode_lists(X_train, list_columns)
-if not TEST:
-    eval_data,_ = one_hot_encode_lists(eval_data, list_columns, mlb_dict)
-    X_train, eval_data = X_train.align(eval_data, join='outer', axis=1, fill_value=0)
+#list_columns = ['action_list_1', 'action_list_2']
+#X_train, mlb_dict = one_hot_encode_lists(X_train, list_columns)
+#if not TEST:
+#    eval_data,_ = one_hot_encode_lists(eval_data, list_columns, mlb_dict)
+#    X_train, eval_data = X_train.align(eval_data, join='outer', axis=1, fill_value=0)
 
 
 # consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
@@ -111,7 +117,7 @@ gc.collect()
 # CatBoost
 catboost_model = CatBoostClassifier()
 print("Training the CatBoost model...")
-catboost_model = CatBoostClassifier(iterations=1000, learning_rate=0.1, depth=10, loss_function='Logloss', eval_metric='AUC', random_seed=2345, verbose=100)
+catboost_model = CatBoostClassifier(iterations=1000, learning_rate=0.1, depth=10, loss_function='Logloss', eval_metric='AUC', random_seed=2345, verbose=100, early_stopping_rounds=50)
 catboost_model.fit(X_train, y_train, cat_features=catgorical_indices)
 
 if not TEST:
@@ -124,22 +130,21 @@ if not TEST:
     submission_df.to_csv(MODEL_NAME + ".csv", sep=",", index=False)
 
 print("Se entreno el " + MODEL_NAME + " con un: " + str(PROPORTION) + " de los datos")
+print("sin one hot encoding de listas")
 
 
 # me mate la ram
 #del X_train
-del y_train
-del eval_data
-gc.collect()
-
-
+#del y_train
+#del eval_data
+#gc.collect()
 # Testeamos a ver como nos va a ir
-y_test = ctr_21["Label"]
-X_test = ctr_21.drop(columns=["Label"])
-X_test,_ = one_hot_encode_lists(X_test, list_columns, mlb_dict)
-X_test, _ = X_test.align(X_train, join='outer', axis=1, fill_value=0)
-categorical_cols_test = X_test.select_dtypes(exclude='number').columns
-X_test[categorical_cols_test] = X_test[categorical_cols_test].astype(str)
-y_preds_test = catboost_model.predict_proba(X_test)[:, catboost_model.classes_ == 1].squeeze()
-roc_auc = roc_auc_score(y_test, y_preds_test)
-print("ROC AUC: " + str(roc_auc) + " en el set de testeo (21) usando el " + str(PROPORTION) + " de los datos")
+#y_test = ctr_21["Label"]
+#X_test = ctr_21.drop(columns=["Label"])
+#X_test,_ = one_hot_encode_lists(X_test, list_columns, mlb_dict)
+#X_test, _ = X_test.align(X_train, join='outer', axis=1, fill_value=0)
+#categorical_cols_test = X_test.select_dtypes(exclude='number').columns
+#X_test[categorical_cols_test] = X_test[categorical_cols_test].astype(str)
+#y_preds_test = catboost_model.predict_proba(X_test)[:, catboost_model.classes_ == 1].squeeze()
+#roc_auc = roc_auc_score(y_test, y_preds_test)
+#print("ROC AUC: " + str(roc_auc) + " en el set de testeo (21) usando el " + str(PROPORTION) + " de los datos")
