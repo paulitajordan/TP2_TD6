@@ -9,7 +9,7 @@ import ast
 
 
 MODEL_NAME = "catboost_model"
-PROPORTION = 1 # Cant datos
+PROPORTION = 1/1000 # Cant datos
 TEST = False
 
 # Print all columns and rows
@@ -32,13 +32,9 @@ eval_data = ctr_test
 # convertimos auction_time a datetime y despues lo separo en columnas (año,mess,dia,hora,minuto)
 for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
     df["auction_time"] = pd.to_datetime(df["auction_time"], unit='s')
-    #df["year"] = df["auction_time"].dt.year
-    #df["month"] = df["auction_time"].dt.month
-    # no tenian sentido estas columnas
     df["day"] = df["auction_time"].dt.day
     df["hour"] = df["auction_time"].dt.hour
     df["minute"] = df["auction_time"].dt.minute
-    #df["second"] = df["auction_time"].dt.second
     df["weekday"] = df["auction_time"].dt.weekday
 
 # datos de etnrenamiento (agregar el 21)
@@ -55,52 +51,14 @@ gc.collect()
 
 y_train = train_data["Label"]
 X_train = train_data.drop(columns=["Label"])
-
+eval_data = eval_data.drop(columns=["Label"])
 print("Datos cargados")
-
-## Vi que hay 2 listas con valores que parecen ser ids, entonces hacemos one hot encoding
-def one_hot_encode_lists(df, list_columns, mlb_dict=None):
-    if mlb_dict is None:
-        mlb_dict = {}
-    
-    for col in list_columns:
-        # Convertimos los strings que representan listas en listas reales solo si está en formato string
-        df[col] = df[col].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) and x.startswith("[") else x)
-        
-        # Aseguramos que todas las entradas sean listas, incluyendo aquellas que ya son listas
-        df[col] = df[col].apply(lambda x: x if isinstance(x, list) else [])
-        
-        if col not in mlb_dict:
-            mlb_dict[col] = MultiLabelBinarizer()
-            df_expanded = pd.DataFrame(mlb_dict[col].fit_transform(df[col]),
-                                       columns=[f"{col}_{cls}" for cls in mlb_dict[col].classes_],
-                                       index=df.index)
-        else:
-            df_expanded = pd.DataFrame(mlb_dict[col].transform(df[col]),
-                                       columns=[f"{col}_{cls}" for cls in mlb_dict[col].classes_],
-                                       index=df.index)
-        
-        # Concatenamos las nuevas columnas al DataFrame original y eliminamos la columna original
-        df = pd.concat([df, df_expanded], axis=1).drop(columns=[col])
-    
-    return df, mlb_dict
-
-# expandir las columnas que contienen listas
-#list_columns = ['action_list_1', 'action_list_2']
-#X_train, mlb_dict = one_hot_encode_lists(X_train, list_columns)
-#if not TEST:
-#    eval_data,_ = one_hot_encode_lists(eval_data, list_columns, mlb_dict)
-#    X_train, eval_data = X_train.align(eval_data, join='outer', axis=1, fill_value=0)
 
 
 # consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
 categorical_cols = X_train.select_dtypes(exclude='number').columns
-catgorical_indices = [X_train.columns.get_loc(col) for col in categorical_cols]
 if not TEST:
     categorical_cols_eval = eval_data.select_dtypes(exclude='number').columns
-    categorical_indices_eval = [eval_data.columns.get_loc(col) for col in categorical_cols_eval]
-
-
 
 # convierto a str los objetos porque el catboost es exquisito (no objetos)
 X_train[categorical_cols] = X_train[categorical_cols].astype(str)
@@ -114,11 +72,11 @@ print("cantidad filas: " + str(X_train.shape[0]))
 del train_data
 gc.collect()
 
+
 # CatBoost
-catboost_model = CatBoostClassifier()
 print("Training the CatBoost model...")
-catboost_model = CatBoostClassifier(iterations=1000, learning_rate=0.1, depth=10, loss_function='Logloss', eval_metric='AUC', random_seed=2345, verbose=100, early_stopping_rounds=50)
-catboost_model.fit(X_train, y_train, cat_features=catgorical_indices)
+catboost_model = CatBoostClassifier(iterations=10, learning_rate=0.1, depth=10, loss_function='Logloss', eval_metric='AUC', random_seed=2345, verbose=True, early_stopping_rounds=100, class_weights=[1, 100])
+catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list())
 
 if not TEST:
     # nos creamos el archivo de submission
