@@ -1,23 +1,15 @@
 import pandas as pd
 import gc
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.pipeline import make_pipeline
+from catboost import CatBoostClassifier
 from sklearn.metrics import roc_auc_score
-from scipy import sparse
+import re
 import numpy as np
 
-# Proportion of the data to use for training
-PROPORTION = 1/10
 
-# Print all columns and rows
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', None)
-pd.set_option('display.width', None)
+MODEL_NAME = "catboost_model"
+PROPORTION = 0.25 # Cant datos
 
-
+print("Cargando los datos...")
 ctr_15 = pd.read_csv ("./datos/ctr_15.csv")
 ctr_16 = pd.read_csv ("./datos/ctr_16.csv")
 ctr_17 = pd.read_csv ("./datos/ctr_17.csv")
@@ -26,96 +18,115 @@ ctr_19 = pd.read_csv ("./datos/ctr_19.csv")
 ctr_20 = pd.read_csv ("./datos/ctr_20.csv")
 ctr_21 = pd.read_csv ("./datos/ctr_21.csv")
 ctr_test = pd.read_csv ("./datos/ctr_test.csv")
-
-ctr_15["Dia"] = 1
-ctr_16["Dia"] = 2
-ctr_17["Dia"] = 3
-ctr_18["Dia"] = 4
-ctr_19["Dia"] = 5
-ctr_20["Dia"] = 6
-ctr_21["Dia"] = 7 # de validación
-ctr_test["Dia"] = 8 # para optimizar
-
-# Load the train data
-train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20])
-
-# Split the train data into train and test
-test_data = ctr_21
-y_test = ctr_21["Label"]
-X_test = ctr_21.drop(columns=["Label"])
-
-# Load the test data
 eval_data = ctr_test
 
-# Train a tree on the train data
-train_data = train_data.sample(frac=PROPORTION)  # Use only 1/n of the data for training
+print("Datos cargados")
+
+# Función para limpiar y convertir a enteros
+def clean_and_convert(lst_str):
+    if isinstance(lst_str, str) and len(lst_str) > 0:
+        # Limpiamos los caracteres no numéricos
+        clean_list = [re.sub(r'\D', '', i) for i in lst_str.split(",")]
+        # Filtramos los elementos que no sean vacíos tras la limpieza
+        clean_list = [int(i) for i in clean_list if i.isdigit()]
+        return clean_list
+    return []
+
+# convertimos auction_time a datetime y despues lo separo en columnas (año,mess,dia,hora,minuto)
+for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
+    # convertimos a datetime
+    df["auction_time"] = pd.to_datetime(df["auction_time"], unit='s')
+    df["day"] = df["auction_time"].dt.day
+    df["hour"] = df["auction_time"].dt.hour
+    df["minute"] = df["auction_time"].dt.minute
+    df["weekday"] = df["auction_time"].dt.weekday
+    # Trabajamos las listas
+    # Tamaños
+    df["auction_list_0_size"] = df["auction_list_0"].apply(lambda x: len(x) if isinstance(x, list) else 0)
+    df["action_list_1_size"] = df["action_list_1"].apply(lambda x: len(x.split(",")) if isinstance(x, str) else 0)
+    df["action_list_2_size"] = df["action_list_2"].apply(lambda x: len(x.split(",")) if isinstance(x, str) else 0)
+    # Promedios
+    df["action_list_1_mean"] = df["action_list_1"].apply(lambda x: sum(clean_and_convert(x)) / len(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_mean"] = df["action_list_2"].apply(lambda x: sum(clean_and_convert(x)) / len(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    
+    # Sumatorias
+    df["action_list_1_sum"] = df["action_list_1"].apply(lambda x: sum(clean_and_convert(x)))
+    df["action_list_2_sum"] = df["action_list_2"].apply(lambda x: sum(clean_and_convert(x)))
+
+    # Medianas
+    df["action_list_1_median"] = df["action_list_1"].apply(lambda x: np.median(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_median"] = df["action_list_2"].apply(lambda x: np.median(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+
+    # Varianzas
+    df["action_list_1_variance"] = df["action_list_1"].apply(lambda x: np.var(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_variance"] = df["action_list_2"].apply(lambda x: np.var(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+
+    # Max y Min
+    df["action_list_1_max"] = df["action_list_1"].apply(lambda x: max(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_1_min"] = df["action_list_1"].apply(lambda x: min(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_max"] = df["action_list_2"].apply(lambda x: max(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_min"] = df["action_list_2"].apply(lambda x: min(clean_and_convert(x)) if len(clean_and_convert(x)) > 0 else 0)
+
+    # Rango max-min
+    df["action_list_1_range"] = df["action_list_1_max"] - df["action_list_1_min"]
+    df["action_list_2_range"] = df["action_list_2_max"] - df["action_list_2_min"]
+
+    # Cantidad de valores únicos
+    df["action_list_1_unique"] = df["action_list_1"].apply(lambda x: len(set(clean_and_convert(x))) if len(clean_and_convert(x)) > 0 else 0)
+    df["action_list_2_unique"] = df["action_list_2"].apply(lambda x: len(set(clean_and_convert(x))) if len(clean_and_convert(x)) > 0 else 0)
+
+    print("Dataframe transformado")
+
+# datos de etnrenamiento (agregar el 21)
+train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21])
+
+# saco la mitad de los datos con label 0
+data_with_label_1 = train_data[train_data["Label"] == 1]
+data_with_label_0 = train_data[train_data["Label"] == 0].sample(frac=PROPORTION, random_state=1234)
+
+train_data = pd.concat([data_with_label_1, data_with_label_0])
+
+
+## nos quedamos cortos de ram
+del ctr_15, ctr_16, ctr_17, ctr_18, ctr_19, ctr_20, ctr_21
+gc.collect()
+
+# shuffle
+train_data = train_data.sample(frac=1, random_state=1234)
+
+print("columas de tiempo y listas transformadas")
+
+
+
 y_train = train_data["Label"]
 X_train = train_data.drop(columns=["Label"])
-#numeric_cols = X_train.select_dtypes(include='number').columns
-categoric_cols = X_train.select_dtypes(exclude='number').columns
 
-# Crea el transformador para manejar variables numéricas y categóricas
-preprocessor = ColumnTransformer(
-    transformers=[
-        #('num', SimpleImputer(), numeric_cols),
-        ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=True), categoric_cols)
-        # los 2 param. de OneHotEncoder son para que no falle si hay valores desconocidos y para que use matrices ralas
-    ])
+
+
+# consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
+categorical_cols = X_train.select_dtypes(exclude='number').columns
+# convierto a str los objetos porque el catboost es exquisito (no objetos)
+X_train[categorical_cols] = X_train[categorical_cols].astype(str)
+eval_data[categorical_cols] = eval_data[categorical_cols].astype(str)
+
+
+# tamaño de los datos
+print("cantidad columnas: " + str(X_train.shape[1]))
+print("cantidad filas: " + str(X_train.shape[0]))
 
 del train_data
 gc.collect()
 
 
-print("Training the model...")
-X_train_transformed = preprocessor.fit_transform(X_train)
-x_test_transformed = preprocessor.transform(X_test)
+# CatBoost
+print("Training the CatBoost model...")
+catboost_model = CatBoostClassifier(iterations=500, learning_rate=0.1, depth=8, loss_function='Logloss', eval_metric='AUC', random_seed=11, verbose=True, early_stopping_rounds=100)
+catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list())
 
-# grid search
-#depths = [30]
-#min_samples = [100]
-#for i in depths:
-#    for j in min_samples:
-#        cls = DecisionTreeClassifier(max_depth=i, min_samples_split= j, random_state=2345)
-#        cls.fit(X_train_transformed, y_train)
-#        y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
-#        auc = roc_auc_score(y_test, y_preds_test)
-#        print("AUC: ", auc, " depth: ", i, " min_samples: ", j)
-    
-
-
-
-cls = DecisionTreeClassifier(max_depth=30, min_samples_split= 100, random_state=2345)
-cls.fit(X_train_transformed, y_train)
-print("Model trained!")
-
-
-# Predict on the evaluation set
-
-X_eval = eval_data.drop(columns=["id"])
-X_eval_transformed = preprocessor.transform(X_eval) ## aca transforma las variables categóricas igual que con los datos de entrenamiento
-
-
-y_preds = cls.predict_proba(X_eval_transformed)[:, cls.classes_ == 1].squeeze()
-
-
-
-# Make the submission file
+#usamos predict_proba en lugar de predict porque mejora el auc
+y_preds = catboost_model.predict_proba(eval_data)[:, 1]
 submission_df = pd.DataFrame({"id": eval_data["id"], "Label": y_preds})
 submission_df["id"] = submission_df["id"].astype(int)
-submission_df.to_csv("basic_model.csv", sep=",", index=False)
+submission_df.to_csv(MODEL_NAME + ".csv", sep=",", index=False)
 
-print("Done!, using: " + str(PROPORTION) + " proportion of the data")
-
-##VALIDACOIÓN
-y_preds_test = cls.predict_proba(x_test_transformed)[:, cls.classes_ == 1].squeeze()
-auc = roc_auc_score(y_test, y_preds_test)
-print("AUC: ", auc, " day 21")
-print("categorical data")
-
-
-
-# agregue one hot encoder para las variables categóricas
-# saque el pipeline porque se rompía con lo de arriba
-# aumente el max_depth a 20
-# saque el min_impurity_decrease
-# me guardo el ultimo dia para testear // volver a comentar para entrenar con todos los datos
+print("Se entreno el " + MODEL_NAME + " con un: " + str(PROPORTION) + " de los datos")
