@@ -332,32 +332,8 @@ if entrenamiento:
 
     feature_importances = catboost_model.get_feature_importance(prettified=True)
     print("Feature importances")
+    feature_importances.to_csv(MODEL_NAME + "_feature_importances.csv", index=False)
     print(feature_importances)
 
 
     print("Se entreno el " + MODEL_NAME + " con un: " + str(PROPORTION_TRAIN) + " de los datos")
-
-    print(" training another catboost")
-    # CatBoost
-
-    catboost_model = CatBoostClassifier(iterations=500, learning_rate=best_learning, depth=best_depth, loss_function='Logloss', eval_metric='AUC', random_seed=11, verbose=True, early_stopping_rounds=100)
-    catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list())
-
-    y_preds = catboost_model.predict_proba(eval_data)[:, 1]
-    submission_df = pd.DataFrame({"id": eval_data["id"], "Label": y_preds})
-    submission_df["id"] = submission_df["id"].astype(int)
-    submission_df.to_csv(MODEL_NAME + "_2.csv", sep=",", index=False)
-
-    print("Se entreno el " + MODEL_NAME + "_2" + " con un: " + str(PROPORTION_TRAIN) + " de los datos")
-
-    print(" training another catboost")
-    # CatBoost
-    catboost_model = CatBoostClassifier(iterations=500, learning_rate=0.1, depth=8, loss_function='Logloss', eval_metric='AUC', random_seed=11, verbose=True, early_stopping_rounds=100, class_weights=[1, 4])
-    catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list())
-
-    y_preds = catboost_model.predict_proba(eval_data)[:, 1]
-    submission_df = pd.DataFrame({"id": eval_data["id"], "Label": y_preds})
-    submission_df["id"] = submission_df["id"].astype(int)
-    submission_df.to_csv(MODEL_NAME + "_3.csv", sep=",", index=False)
-
-    print("Se entreno el " + MODEL_NAME + "_3" + " con un: " + str(PROPORTION_TRAIN) + " de los datos")
