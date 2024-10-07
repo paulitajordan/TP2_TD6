@@ -155,15 +155,17 @@ if analisis:
     data_with_label_1 = train_data_a[train_data_a["Label"] == 1]
     data_with_label_0 = train_data_a[train_data_a["Label"] == 0].sample(frac=0.1, random_state=1234)
 
-    ## graficamos un histograma de label = 1 contra weekday y hour
+    #graficamos un histograma de label = 1 contra weekday y hour
     # superponemos los histogramas y los guardamos
-    sns.histplot(data_with_label_1["weekday"], bins=7, color='blue', alpha=0.5, label='label 1')
     sns.histplot(data_with_label_0["weekday"], bins=7, color='red', alpha=0.5, label='label 0')
+    sns.histplot(data_with_label_1["weekday"], bins=7, color='blue', alpha=0.5, label='label 1')
+    plt.legend()
     plt.savefig("weekday.png")
     plt.clf()
-
-    sns.histplot(data_with_label_1["hour"], bins=24, color='blue', alpha=0.5, label='label 1')
+    
     sns.histplot(data_with_label_0["hour"], bins=24, color='red', alpha=0.5, label='label 0')
+    sns.histplot(data_with_label_1["hour"], bins=24, color='blue', alpha=0.5, label='label 1')
+    plt.legend()
     plt.savefig("hour.png")
     plt.clf()
 
