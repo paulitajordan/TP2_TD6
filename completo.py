@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 #Cargamos los datos
 MODEL_NAME = "catboost_model"
 PROPORTION_TRAIN = 0.25
-PROPORTION_OPT = 1/100
+PROPORTION_OPT = 1/5
 
 print("Cargando los datos...")
 ctr_15 = pd.read_csv ("./datos/ctr_15.csv")
@@ -36,137 +36,7 @@ analisis = False
 opt = False
 entrenamiento = False
 
-
-#Etapa de analisis:
-
-if analisis:
-    # Establecer el estilo de los gráficos
-    sns.set(style="whitegrid")
-
-    # Función para preprocesar los datos
-    def preprocess_data(df):
-        categorical_columns = df.select_dtypes(include=['object', 'category']).columns
-        le = LabelEncoder()
-        for col in categorical_columns:
-            df[col] = le.fit_transform(df[col].astype(str))
-        return df
-
-    # Función para generar la lista de las 25 correlaciones más fuertes
-    def top_n_correlations(df, threshold=0.4):
-        corr_matrix = df.corr()
-        # Filtrar correlaciones según el umbral absoluto
-        corr_pairs = corr_matrix.unstack().reset_index()
-        corr_pairs.columns = ['Variable_1', 'Variable_2', 'Correlation']
-        corr_pairs = corr_pairs[(corr_pairs['Variable_1'] != corr_pairs['Variable_2']) & 
-                                (np.abs(corr_pairs['Correlation']) > threshold)]
-        
-        # Ordenar por correlación absoluta y tomar los 25 más altos
-        top_correlations = corr_pairs.iloc[np.abs(corr_pairs['Correlation']).argsort()[::-1]].head(25)
-        return top_correlations
-
-    # Función para capturar relaciones complejas entre las variables con RandomForest
-    def feature_importance(df, target_column):
-        X = df.drop(columns=[target_column])
-        y = df[target_column]
-
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-        model.fit(X, y)
-
-        feature_importances = pd.DataFrame({'Feature': X.columns, 'Importance': model.feature_importances_})
-        feature_importances = feature_importances.sort_values(by='Importance', ascending=False)
-
-        plt.figure(figsize=(10, 6))
-        sns.barplot(x='Importance', y='Feature', data=feature_importances, palette='viridis')
-        plt.title('Importancia de las Variables', fontsize=16)
-        plt.xlabel('Importancia', fontsize=14)
-        plt.ylabel('Características', fontsize=14)
-        plt.xticks(rotation=45, ha='right')
-        for index, value in enumerate(feature_importances['Importance']):
-            plt.text(value, index, f'{value:.2f}', color='black', ha='left', va='center')
-        plt.tight_layout()
-        plt.show()
-
-        return feature_importances
-
-    # Función para generar histogramas de frecuencia
-    def plot_frequency_histograms(df):
-        # Extraer el mes, día, hora y año
-        df["auction_time"] = pd.to_datetime(df["auction_time"], unit='s')
-        df["month"] = df["auction_time"].dt.month
-        df["day"] = df["auction_time"].dt.day
-        df["hour"] = df["auction_time"].dt.hour
-        df["year"] = df["auction_time"].dt.year
-        
-        # Crear histogramas
-        plt.figure(figsize=(14, 10))
-
-        plt.subplot(2, 2, 1)
-        sns.histplot(df["year"], bins=df["year"].nunique(), kde=False, color='skyblue')
-        plt.title('Frecuencia por Año')
-        plt.xlabel('Año')
-        plt.ylabel('Frecuencia')
-
-        plt.subplot(2, 2, 2)
-        sns.histplot(df["month"], bins=12, kde=False, color='lightgreen')
-        plt.title('Frecuencia por Mes')
-        plt.xlabel('Mes')
-        plt.ylabel('Frecuencia')
-
-        plt.subplot(2, 2, 3)
-        sns.histplot(df["day"], bins=31, kde=False, color='salmon')
-        plt.title('Frecuencia por Día')
-        plt.xlabel('Día')
-        plt.ylabel('Frecuencia')
-
-        plt.subplot(2, 2, 4)
-        sns.histplot(df["hour"], bins=24, kde=False, color='orange')
-        plt.title('Frecuencia por Hora')
-        plt.xlabel('Hora')
-        plt.ylabel('Frecuencia')
-
-        plt.tight_layout()
-        plt.show()
-
-    # Función principal para ejecutar todo el proceso
-    def main(target_column):
-
-        train = pd.concat([ctr_15, ctr_16, ctr_17, ctr_18, ctr_19, ctr_20, ctr_21])
-        train = train.sample(frac=0.1, random_state=42)
-        train = preprocess_data(train)
-
-        # Generar las correlaciones filtradas
-        top_correlations = top_n_correlations(train, threshold=0.4)
-        print("Top correlaciones con abs(Correlación) > 0.4:")
-        print(top_correlations)
-
-        # Visualización de la matriz de correlación filtrada
-        correlation_matrix = train.corr()
-        filtered_vars = pd.unique(top_correlations[['Variable_1', 'Variable_2']].values.ravel('K'))
-        filtered_corr_matrix = correlation_matrix.loc[filtered_vars, filtered_vars]
-
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(filtered_corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', square=True,
-                    cbar_kws={"shrink": .8}, linewidths=0.5, linecolor='black')
-        plt.title('Matriz de Correlación (Filtrada)', fontsize=16)
-        plt.xticks(rotation=45, ha='right')
-        plt.yticks(rotation=0)
-        plt.tight_layout()
-        plt.show()
-
-        feature_importances = feature_importance(train, target_column)
-
-        # Generar histogramas de frecuencia
-        plot_frequency_histograms(train)
-
-        return top_correlations, feature_importances
-
-    # Columna objetivo
-    target_column = 'Label'
-
-    # Ejecutar el análisis
-    top_correlations, feature_importances = main(target_column)
-
-#Funciones auxiliares y transformaciones a utilizar en optimizacion y train
+#Funciones auxiliares y transformaciones a utilizar
 
 # Función para limpiar y convertir a enteros
 def clean_and_convert(lst_str):
@@ -180,7 +50,7 @@ def clean_and_convert(lst_str):
 
 #Transformaciones
 df_count = 1
-for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
+for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21, ctr_test, eval_data]:
     #Borramos columnas
     df = df.drop(columns=["action_categorical_5", "action_categorical_6", "auction_categorical_5", "creative_categorical_11", "auction_categorical_10", "creative_categorical_1", "auction_categorical_2", "timezone_offset", "auction_boolean_1", "auction_categorical_3", "auction_boolean_2", "creative_width", "has_video", "creative_categorical_7", "auction_boolean_0", "creative_categorical_10"])
     #Convertimos a datetime
@@ -267,62 +137,167 @@ for df in [ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21,eval_data]:
 
 print("cantidad de columnas: " + str(ctr_15.shape[1]))
 
+#Concateno datos de entrenamiento
+train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21])
+
+
+#Para evitar problemas con la RAM
+del ctr_15, ctr_16, ctr_17, ctr_18, ctr_19, ctr_20, ctr_21
+gc.collect()
+
+#Tomo un porcentaje de los datos para el analisis
+train_data_a = train_data.sample(frac=0.1, random_state=1234)
+
+print("columas de tiempo y listas transformadas")
+
+#Etapa de analisis:
+if analisis:
+    data_with_label_1 = train_data_a[train_data_a["Label"] == 1]
+    data_with_label_0 = train_data_a[train_data_a["Label"] == 0].sample(frac=0.1, random_state=1234)
+
+    ## graficamos un histograma de label = 1 contra weekday y hour
+    # superponemos los histogramas y los guardamos
+    sns.histplot(data_with_label_1["weekday"], bins=7, color='blue', alpha=0.5, label='label 1')
+    sns.histplot(data_with_label_0["weekday"], bins=7, color='red', alpha=0.5, label='label 0')
+    plt.savefig("weekday.png")
+    plt.clf()
+
+    sns.histplot(data_with_label_1["hour"], bins=24, color='blue', alpha=0.5, label='label 1')
+    sns.histplot(data_with_label_0["hour"], bins=24, color='red', alpha=0.5, label='label 0')
+    plt.savefig("hour.png")
+    plt.clf()
+
+    print("graficos guardados")
+
+
+#Division de datos para optimizacion y entrenamiento
+
+#Al tener una leve desproporcion de los datos, optamos por reducir la cantidad de label 0
+data_with_label_1 = train_data[train_data["Label"] == 1]
+data_with_label_0_train = train_data[train_data["Label"] == 0].sample(frac=PROPORTION_TRAIN, random_state=1234)
+data_with_label_0_opt = train_data[train_data["Label"] == 0].sample(frac=PROPORTION_OPT, random_state=1234)
+
+train_data = pd.concat([data_with_label_1, data_with_label_0])
+opt_data = pd.concat([data_with_label_1, data_with_label_0])
+
+
+y_train = train_data["Label"]
+X_train = train_data.drop(columns=["Label"])
+
+y_opt = opt_data["Label"]
+X_opt = opt_data.drop(columns=["Label"])
+
+
+# consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
+categorical_cols_train = X_train.select_dtypes(exclude='number').columns
+# convierto a str los objetos porque el catboost es exquisito (no objetos)
+X_train[categorical_cols_train] = X_train[categorical_cols_train].astype(str)
+eval_data[categorical_cols_train] = eval_data[categorical_cols_train].astype(str)
+
+# consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
+categorical_cols_opt = X_opt.select_dtypes(exclude='number').columns
+# convierto a str los objetos porque el catboost es exquisito (no objetos)
+X_opt[categorical_cols_opt] = X_opt[categorical_cols_opt].astype(str)
+ctr_test[categorical_cols_opt] = ctr_test[categorical_cols_opt].astype(str)
+
+# tamaño de los datos
+print("cantidad columnas: " + str(X_train.shape[1]))
+print("cantidad filas: " + str(X_train.shape[0]))
+
+del train_data, data_with_label_0_train, data_with_label_0_opt, data_with_label_1
+gc.collect()
+
 #Etapa de optimizacion:
 if opt:
-    pass
+
+    # Función principal para el grid search
+    def perform_manual_gridsearch(X_train, y_train, X_val, y_val, categorical_cols):
+        # Definir los hiperparámetros que se evaluarán
+        iteraciones = [500, 750, 1000]
+        depths = [4, 6, 8, 10]
+        learning_rates = [0.01, 0.05, 0.1]
+        
+        aucs = []  # Lista para almacenar los resultados de AUC-ROC y parámetros
+        
+        # Grid search manual
+        for iter in iteraciones:
+            for depth in depths:
+                for learning in learning_rates:
+                    print(f"Entrenando con iteraciones={iter}, profundidad={depth}, learning_rate={learning}")
+                    
+                    # Crear el modelo con los hiperparámetros actuales
+                    catboost_model = CatBoostClassifier(
+                        iterations=iter,
+                        learning_rate=learning,
+                        depth=depth,
+                        loss_function='Logloss',
+                        eval_metric='AUC',
+                        random_seed=11,
+                        verbose=False,
+                        early_stopping_rounds=100
+                    )
+                    
+                    # Entrenar el modelo
+                    catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list(), eval_set=(X_val, y_val), verbose=False)
+                    
+                    # Obtener las predicciones para el conjunto de validación
+                    y_val_pred = catboost_model.predict_proba(X_val)[:, 1]  # Obtener las probabilidades de clase 1
+                    
+                    # Calcular el AUC-ROC
+                    auc = roc_auc_score(y_val, y_val_pred)
+                    print(f"AUC-ROC obtenido: {auc:.4f}")
+                    
+                    # Guardar los resultados en la lista
+                    aucs.append((iter, depth, learning, auc))
+        
+        return aucs
+
+    # Función para seleccionar la mejor combinación de hiperparámetros
+    def seleccionar_mejores_parametros(aucs):
+        # Buscar el valor máximo de AUC-ROC y sus parámetros asociados
+        mejor_combinacion = max(aucs, key=lambda x: x[3])  # Ordenar por el AUC-ROC (4to elemento de cada tupla)
+        
+        print("\nMejores hiperparámetros encontrados:")
+        print(f"Iteraciones: {mejor_combinacion[0]}")
+        print(f"Profundidad: {mejor_combinacion[1]}")
+        print(f"Learning Rate: {mejor_combinacion[2]}")
+        print(f"Mejor AUC-ROC: {mejor_combinacion[3]:.4f}")
+        
+        return mejor_combinacion
+    
+    # Dividir en conjunto de entrenamiento y validación
+    X_train, X_val, y_train, y_val = train_test_split(X_opt, y_opt, test_size=0.2, random_state=42)
+    
+    # Ejecutar el grid search manual
+    aucs = perform_manual_gridsearch(X_train, y_train, X_val, y_val, categorical_cols_opt)
+    
+    # Seleccionar la mejor combinación de hiperparámetros
+    mejor_combinacion = seleccionar_mejores_parametros(aucs)
+    best_depth = mejor_combinacion[1]
+    best_learning = mejor_combinacion[2]
+    best_iter =  mejor_combinacion[0]
+    
+    # Guardar los resultados en un archivo CSV
+    aucs_df = pd.DataFrame(aucs, columns=['iteraciones', 'profundidad', 'learning_rate', 'auc_roc'])
+    aucs_df.to_csv("resultados_auc_roc.csv", index=False)
+    
+    print("\nLos resultados del GridSearch manual se han guardado en 'resultados_auc_roc.csv'.")
+
+
 else:
-    best_depth: 8
-    best_learning: 0.01
+    best_depth = 8
+    best_learning = 0.01
+    best_iter = 500
     #Best AUC: 0.8626837758530653
     #Best depth: 8
     #Best learning rate: 0.01
 
 #Etapa de entrenamiento de modelo
 if entrenamiento:
-
-    #Concateno datos de entrenamiento
-    train_data = pd.concat([ctr_15,ctr_16,ctr_17,ctr_18,ctr_19,ctr_20,ctr_21])
-
-    # saco la mitad de los datos con label 0
-    data_with_label_1 = train_data[train_data["Label"] == 1]
-    data_with_label_0 = train_data[train_data["Label"] == 0].sample(frac=PROPORTION_TRAIN, random_state=1234)
-
-    train_data = pd.concat([data_with_label_1, data_with_label_0])
-
-
-    #Para evitar problemas con la RAM
-    del ctr_15, ctr_16, ctr_17, ctr_18, ctr_19, ctr_20, ctr_21
-    gc.collect()
-
-    #Hago un shuffle
-    train_data = train_data.sample(frac=1, random_state=1234)
-
-    print("columas de tiempo y listas transformadas")
-
-    y_train = train_data["Label"]
-    X_train = train_data.drop(columns=["Label"])
-
-
-
-    # consigo los indices de las variables categoricas (ya que el catboost las maneja nativamente) pero tienen que ser en string o int 
-    categorical_cols = X_train.select_dtypes(exclude='number').columns
-    # convierto a str los objetos porque el catboost es exquisito (no objetos)
-    X_train[categorical_cols] = X_train[categorical_cols].astype(str)
-    eval_data[categorical_cols] = eval_data[categorical_cols].astype(str)
-
-
-    # tamaño de los datos
-    print("cantidad columnas: " + str(X_train.shape[1]))
-    print("cantidad filas: " + str(X_train.shape[0]))
-
-    del train_data, data_with_label_0, data_with_label_1
-    gc.collect()
-
-
     # CatBoost
     print("Training the CatBoost model...")
-    catboost_model = CatBoostClassifier(iterations=500, learning_rate=0.1, depth=8, loss_function='Logloss', eval_metric='AUC', random_seed=11, verbose=True, early_stopping_rounds=100)
-    catboost_model.fit(X_train, y_train, cat_features=categorical_cols.to_list())
+    catboost_model = CatBoostClassifier(iterations=best_iter, learning_rate=best_learning, depth=best_depth, loss_function='Logloss', eval_metric='AUC', random_seed=11, verbose=True, early_stopping_rounds=100)
+    catboost_model.fit(X_train, y_train, cat_features=categorical_cols_train.to_list())
 
     #Usamos predict_proba en lugar de predict porque mejora el auc
     y_preds = catboost_model.predict_proba(eval_data)[:, 1]
